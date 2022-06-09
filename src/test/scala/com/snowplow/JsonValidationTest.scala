@@ -2,6 +2,7 @@ package com.snowplow
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
+import cats.implicits.catsSyntaxApplicativeId
 import com.snowplow.infrastructure.Database
 import com.snowplow.routes.JsonValidationRoute
 import com.snowplow.storage.SchemaStorage
@@ -18,6 +19,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import scala.concurrent.ExecutionContextExecutor
+import scala.util.Try
 
 class JsonValidationTest extends AnyFlatSpec with Matchers with Http4sDsl[IO] with Inputs {
 
@@ -42,5 +44,11 @@ class JsonValidationTest extends AnyFlatSpec with Matchers with Http4sDsl[IO] wi
     val validationResponse: IO[Json] = client.expect[Json](validation)
     val validationResult: Json = validationResponse.unsafeRunSync()
     validationResult shouldBe successValidation
+
+    val brokenValidation: Request[IO] = POST(brokenJson, uri"/validate/config-schema")
+    val brokenValidationResponse: IO[Json] = client.expectOr[Json](brokenValidation)(_ => new BadRequest400().pure[IO])
+    Try(brokenValidationResponse.unsafeRunSync()).toEither.isLeft shouldBe true
   }
 }
+
+class BadRequest400() extends Throwable

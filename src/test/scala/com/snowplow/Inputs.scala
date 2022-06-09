@@ -25,6 +25,18 @@ trait Inputs {
       {
         "source": "/home/alice/image.iso",
         "destination": "/mnt/storage",
+        "timeout": 123,
+        "chunks": {
+          "size": 1024,
+          "number": 123
+        }
+      }"""
+
+  val brokenJson =
+    json"""
+      {
+        "source": "/home/alice/image.iso",
+        "destination": "/mnt/storage",
         "timeout": null,
         "chunks": {
           "size": 1024,

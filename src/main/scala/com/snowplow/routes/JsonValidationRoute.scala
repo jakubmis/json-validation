@@ -21,6 +21,7 @@ import sttp.tapir.server.interceptor.ValuedEndpointOutput
 import sttp.tapir.server.interceptor.decodefailure.DefaultDecodeFailureHandler
 
 import scala.concurrent.ExecutionContext
+import scala.jdk.CollectionConverters.IteratorHasAsScala
 
 case class JsonValidationRoute[F[_] : Async](schemaStorage: SchemaStorage[F], config: Config)
                                             (implicit ec: ExecutionContext)
@@ -61,7 +62,7 @@ case class JsonValidationRoute[F[_] : Async](schemaStorage: SchemaStorage[F], co
           } yield result).value
       }
 
-  private val factory = JsonSchemaFactory.byDefault()
+  private val validator = JsonSchemaFactory.byDefault().getValidator
   private val postValidationConfiguration: ServerEndpoint.Full[Unit, Unit, (String, Map[String, Json]), FailedResponse, Response, Any, F] =
     endpoint
       .post
@@ -76,12 +77,12 @@ case class JsonValidationRoute[F[_] : Async](schemaStorage: SchemaStorage[F], co
               case Some(schema) => schema.asRight[FailedResponse].pure[F]
               case None => FailedResponse.failedValidation(id, "schema not found").asLeft[SchemaResponse].pure[F]
             })
-            schema <- EitherT(factory.getJsonSchema(JsonLoader.fromString(schemaString.asJson.noSpaces)).asRight[FailedResponse].pure[F])
-            validation <- EitherT(schema.validate(JsonLoader.fromString(data.asJson.deepDropNullValues.noSpaces)).asRight[FailedResponse].pure[F])
-          } yield validation)
-            .map(_.isSuccess)
-            .map(_ => Response.successValidation(id).asRight[FailedResponse])
-            .getOrElse(FailedResponse.failedValidation(id, "validation failed").asLeft[Response])
+            schema = JsonLoader.fromString(schemaString.data)
+            userData = JsonLoader.fromString(data.asJson.noSpaces)
+            validation <- EitherT(validator.validate(schema, userData, true).asRight[FailedResponse].pure[F])
+            result <- if (validation.isSuccess) EitherT(Response.successValidation(id).asRight[FailedResponse].pure[F])
+            else EitherT(FailedResponse.failedValidation(id, validation.iterator().asScala.toList.mkString("%%%")).asLeft[Response].pure[F])
+          } yield result).value
       }
 
   def failureResponse(c: StatusCode, hs: List[Header], m: String): ValuedEndpointOutput[_] =
